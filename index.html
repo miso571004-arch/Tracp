@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>던전 TRPG - 로비</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+<style>
+  :root {
+    --bg: #0a0908;
+    --panel: #141210;
+    --panel-2: #1b1714;
+    --blood: #6e1414;
+    --blood-bright: #9c2020;
+    --iron: #3a3530;
+    --bone: #cfc6b0;
+    --bone-dim: #8c8575;
+    --rust: #5e3a22;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+  }
+
+  body {
+    min-height: 100vh;
+    font-family: 'Noto Sans KR', sans-serif;
+    color: var(--bone);
+    display: flex;
+    justify-content: center;
+    padding: 30px 14px 60px;
+    position: relative;
+  }
+
+  /* 거친 노이즈 텍스처 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 0%, transparent 30%, rgba(0,0,0,0.65) 100%);
+  }
+
+  .wrap { width: 100%; max-width: 440px; position: relative; z-index: 1; }
+
+  .title-block { text-align: center; margin-bottom: 26px; }
+
+  h1 {
+    font-size: 25px;
+    font-weight: 900;
+    margin: 0;
+    letter-spacing: 2px;
+    color: var(--bone);
+    text-shadow: 2px 2px 0 #000, 0 0 14px rgba(110, 20, 20, 0.5);
+  }
+
+  .subtitle {
+    font-size: 11px;
+    color: var(--bone-dim);
+    letter-spacing: 3px;
+    margin-top: 8px;
+    text-transform: uppercase;
+  }
+
+  .subtitle::before, .subtitle::after { content: "✦"; margin: 0 8px; color: var(--blood-bright); }
+
+  /* 찢어진/거친 느낌의 패널 */
+  .panel {
+    background: var(--panel);
+    border: 2px solid var(--iron);
+    outline: 1px solid #000;
+    outline-offset: -5px;
+    padding: 22px 20px;
+    clip-path: polygon(
+      0 6px, 6px 0, 100% 0, 100% calc(100% - 8px),
+      calc(100% - 8px) 100%, 0 100%
+    );
+    box-shadow: 0 10px 0 rgba(0,0,0,0.5), inset 0 0 40px rgba(0,0,0,0.5);
+    position: relative;
+  }
+
+  label.field-label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--blood-bright);
+    margin: 0 0 7px 1px;
+    font-weight: 700;
+  }
+
+  input {
+    width: 100%;
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 16px;
+    padding: 12px 13px;
+    margin-bottom: 16px;
+    border: 2px solid var(--iron);
+    background: #000;
+    color: var(--bone);
+    outline: none;
+  }
+  input::placeholder { color: #55503f; }
+  input:focus { border-color: var(--blood-bright); }
+
+  button {
+    width: 100%;
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 15px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    padding: 14px;
+    border: 2px solid #000;
+    cursor: pointer;
+    color: var(--bone);
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 100%, 10px 100%);
+    transition: filter 0.1s ease;
+  }
+  button:active { filter: brightness(0.8); transform: translateY(1px); }
+
+  .btn-primary {
+    background: linear-gradient(180deg, var(--iron), #241f1a);
+    box-shadow: inset 0 0 0 1px #000, 0 6px 0 #000;
+  }
+  .btn-primary:hover { background: linear-gradient(180deg, #4a443c, var(--iron)); }
+
+  .btn-blood {
+    background: linear-gradient(180deg, var(--blood), #4a0d0d);
+    box-shadow: inset 0 0 0 1px #000, 0 6px 0 #000;
+  }
+  .btn-blood:hover { background: linear-gradient(180deg, var(--blood-bright), var(--blood)); }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: var(--bone-dim);
+    font-size: 11px;
+    letter-spacing: 2px;
+    margin: 20px 0;
+  }
+  .divider::before, .divider::after {
+    content: "";
+    flex: 1;
+    height: 2px;
+    background: var(--iron);
+  }
+  .divider span { padding: 0 10px; }
+
+  #roomInfo { display: none; }
+
+  .room-code-card {
+    text-align: center;
+    padding: 16px;
+    margin-bottom: 20px;
+    background: #000;
+    border: 2px dashed var(--iron);
+  }
+
+  .room-code-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--bone-dim);
+    margin-bottom: 8px;
+  }
+
+  #roomCode {
+    font-size: 30px;
+    font-weight: 900;
+    letter-spacing: 5px;
+    color: var(--blood-bright);
+    text-shadow: 2px 2px 0 #000;
+  }
+
+  h3.section-title {
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: var(--bone-dim);
+    margin: 4px 0 12px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h3.section-title::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--iron);
+  }
+
+  #playerList {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  #playerList li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 13px;
+    background: #000;
+    border-left: 3px solid var(--blood);
+  }
+
+  .player-name { font-weight: 700; letter-spacing: 0.5px; }
+
+  .host-tag {
+    font-size: 10px;
+    color: #000;
+    background: var(--bone);
+    padding: 3px 7px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+
+  .class-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .class-card {
+    background: #000;
+    border: 2px solid var(--iron);
+    padding: 14px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .class-card:nth-child(5) { grid-column: 1 / span 2; }
+
+  .class-card .icon { font-size: 26px; display: block; margin-bottom: 6px; }
+  .class-card .cname { font-size: 14px; font-weight: 900; letter-spacing: 0.5px; }
+  .class-card .cstat { font-size: 10px; color: var(--bone-dim); margin-top: 3px; letter-spacing: 0.5px; }
+
+  .class-card.mine {
+    border-color: var(--blood-bright);
+    background: linear-gradient(180deg, rgba(110,20,20,0.25), #000);
+  }
+  .class-card.mine .cname { color: var(--blood-bright); }
+
+  .class-card.taken {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .class-card.taken .cstat { color: var(--blood-bright); }
+
+  #partyStatus {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  #partyStatus li {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #000;
+    border-left: 3px solid var(--iron);
+    font-size: 13px;
+  }
+  #partyStatus li.ready { border-left-color: var(--blood-bright); }
+  #partyStatus .pname { font-weight: 700; }
+  #partyStatus .pclass { color: var(--bone-dim); }
+  #partyStatus li.ready .pclass { color: var(--blood-bright); }
+
+  #status {
+    text-align: center;
+    font-size: 11px;
+    color: var(--bone-dim);
+    margin-top: 20px;
+    letter-spacing: 0.5px;
+  }
+  #status.ok { color: #7a8c6a; }
+  #status.ok::before { content: "● "; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="title-block">
+    <h1>던전 TRPG</h1>
+  </div>
+
+  <div class="panel" id="setup">
+    <label class="field-label">모험가 이름</label>
+    <input id="nameInput" placeholder="이름을 입력하세요" maxlength="12">
+
+    <button class="btn-primary" onclick="createRoom()">새로운 던전 열기</button>
+
+    <div class="divider"><span>혹은</span></div>
+
+    <label class="field-label">입장 코드</label>
+    <input id="joinCodeInput" placeholder="예: AB3X9" maxlength="5" style="text-transform:uppercase">
+    <button class="btn-blood" onclick="joinRoom()">파티에 합류하기</button>
+  </div>
+
+  <div class="panel" id="roomInfo">
+    <div class="room-code-card">
+      <div class="room-code-label">던전 입장 코드</div>
+      <div id="roomCode">-----</div>
+    </div>
+
+    <h3 class="section-title">파티원 (<span id="playerCount">0</span>/5)</h3>
+    <ul id="playerList"></ul>
+
+    <button class="btn-blood" id="startGameBtn" style="display:none; margin-top:18px;" onclick="startGame()">
+      던전으로 진입한다
+    </button>
+    <div id="hostHint" style="display:none; text-align:center; font-size:11px; color:var(--bone-dim); margin-top:12px; letter-spacing:0.5px;">
+      호스트가 시작하기를 기다리는 중...
+    </div>
+  </div>
+
+  <div class="panel" id="gameScreen" style="display:none;">
+    <h3 class="section-title">직업을 선택하라</h3>
+    <div id="classGrid" class="class-grid"></div>
+
+    <h3 class="section-title" style="margin-top:20px;">파티 상태</h3>
+    <ul id="partyStatus"></ul>
+  </div>
+
+  <div id="status">Firebase 연결 대기 중...</div>
+</div>
+
+<script>
+  // ------------------------------------------------------------
+  // Firebase 초기화
+  // ------------------------------------------------------------
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMEwUt7yViIDEcJ3LVrbBolC1GQyWWwMk",
+    authDomain: "tracp-a5417.firebaseapp.com",
+    databaseURL: "https://tracp-a5417-default-rtdb.firebaseio.com",
+    projectId: "tracp-a5417",
+    storageBucket: "tracp-a5417.firebasestorage.app",
+    messagingSenderId: "655251581595",
+    appId: "1:655251581595:web:f5dcfdfaa875503da7743e",
+    measurementId: "G-H816RT6VZG"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const statusEl = document.getElementById("status");
+  statusEl.textContent = "Firebase 연결됨";
+  statusEl.classList.add("ok");
+
+  // ------------------------------------------------------------
+  // 상태
+  // ------------------------------------------------------------
+  let currentRoomId = null;
+  let currentPlayerId = null;
+  let isHostPlayer = false;
+  let myClass = null;
+
+  const CLASS_DATA = [
+    { id: "warrior", name: "전사",   icon: "⚔️", stat: "신체능력" },
+    { id: "mage",    name: "마법사", icon: "🔮", stat: "지능" },
+    { id: "archer",  name: "궁수",   icon: "🏹", stat: "민첩" },
+    { id: "druid",   name: "드루이드", icon: "🌿", stat: "정신력" },
+    { id: "priest",  name: "신관",   icon: "✝️", stat: "의지력" }
+  ];
+
+  function generateRoomCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 헷갈리는 글자(0,O,1,I) 제외
+    let code = "";
+    for (let i = 0; i < 5; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code;
+  }
+
+  function generatePlayerId() {
+    return "p_" + Math.random().toString(36).substring(2, 10);
+  }
+
+  // ------------------------------------------------------------
+  // 방 만들기 (= 호스트가 됨)
+  // ------------------------------------------------------------
+  function createRoom() {
+    const name = document.getElementById("nameInput").value.trim();
+    if (!name) { alert("이름을 입력해주세요"); return; }
+
+    const roomId = generateRoomCode();
+    const playerId = generatePlayerId();
+
+    db.ref(`rooms/${roomId}`).set({
+      createdAt: Date.now(),
+      hostId: playerId,
+      players: {
+        [playerId]: { name: name, isHost: true, joinedAt: Date.now() }
+      }
+    }).then(() => {
+      enterRoom(roomId, playerId);
+    }).catch(err => {
+      alert("방 생성 실패: " + err.message);
+    });
+  }
+
+  // ------------------------------------------------------------
+  // 방 참가하기
+  // ------------------------------------------------------------
+  function joinRoom() {
+    const name = document.getElementById("nameInput").value.trim();
+    const roomId = document.getElementById("joinCodeInput").value.trim().toUpperCase();
+    if (!name) { alert("이름을 입력해주세요"); return; }
+    if (!roomId) { alert("방 코드를 입력해주세요"); return; }
+
+    db.ref(`rooms/${roomId}`).get().then(snapshot => {
+      if (!snapshot.exists()) {
+        alert("존재하지 않는 방 코드예요");
+        return;
+      }
+
+      const playerId = generatePlayerId();
+      db.ref(`rooms/${roomId}/players/${playerId}`).set({
+        name: name,
+        isHost: false,
+        joinedAt: Date.now()
+      }).then(() => {
+        enterRoom(roomId, playerId);
+      });
+    });
+  }
+
+  // ------------------------------------------------------------
+  // 로비 화면 — 참가자 목록 렌더링
+  // ------------------------------------------------------------
+  function renderLobbyList(entries) {
+    const list = document.getElementById("playerList");
+    list.innerHTML = "";
+    document.getElementById("playerCount").textContent = entries.length;
+
+    entries.forEach(([id, p]) => {
+      const li = document.createElement("li");
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "player-name";
+      nameSpan.textContent = p.name;
+      li.appendChild(nameSpan);
+
+      if (p.isHost) {
+        const tag = document.createElement("span");
+        tag.className = "host-tag";
+        tag.textContent = "HOST";
+        li.appendChild(tag);
+      }
+      list.appendChild(li);
+    });
+  }
+
+  // ------------------------------------------------------------
+  // 직업 선택 화면 — 카드 그리드 + 파티 상태 렌더링
+  // ------------------------------------------------------------
+  function renderClassSelect(entries) {
+    // classId -> 선택한 플레이어 id
+    const takenBy = {};
+    entries.forEach(([id, p]) => {
+      if (p.class) takenBy[p.class] = id;
+    });
+
+    // 카드 그리드
+    const grid = document.getElementById("classGrid");
+    grid.innerHTML = "";
+
+    CLASS_DATA.forEach(cls => {
+      const card = document.createElement("div");
+      card.className = "class-card";
+
+      const takenPlayerId = takenBy[cls.id];
+      const isMine = takenPlayerId === currentPlayerId;
+      const isTakenByOther = takenPlayerId && !isMine;
+
+      if (isMine) card.classList.add("mine");
+      if (isTakenByOther) card.classList.add("taken");
+
+      const takenName = isTakenByOther
+        ? (entries.find(([id]) => id === takenPlayerId) || [null, {}])[1].name
+        : null;
+
+      card.innerHTML = `
+        <span class="icon">${cls.icon}</span>
+        <div class="cname">${cls.name}</div>
+        <div class="cstat">${isTakenByOther ? takenName + " 선택함" : cls.stat}</div>
+      `;
+
+      if (!isTakenByOther) {
+        card.onclick = () => selectClass(cls.id);
+      }
+
+      grid.appendChild(card);
+    });
+
+    // 파티 상태 리스트
+    const statusList = document.getElementById("partyStatus");
+    statusList.innerHTML = "";
+
+    entries.forEach(([id, p]) => {
+      const li = document.createElement("li");
+      const classInfo = p.class ? CLASS_DATA.find(c => c.id === p.class) : null;
+      if (classInfo) li.classList.add("ready");
+
+      li.innerHTML = `
+        <span class="pname">${p.name}</span>
+        <span class="pclass">${classInfo ? classInfo.icon + " " + classInfo.name : "미정"}</span>
+      `;
+      statusList.appendChild(li);
+    });
+  }
+
+  // 카드 탭 시 직업 선택/해제
+  function selectClass(classId) {
+    if (!currentRoomId || !currentPlayerId) return;
+
+    const newValue = (myClass === classId) ? null : classId;
+    db.ref(`rooms/${currentRoomId}/players/${currentPlayerId}/class`).set(newValue);
+  }
+
+  // ------------------------------------------------------------
+  // 방 입장 후 — 실시간 플레이어 목록 구독
+  // ------------------------------------------------------------
+  function enterRoom(roomId, playerId) {
+    currentRoomId = roomId;
+    currentPlayerId = playerId;
+
+    document.getElementById("setup").style.display = "none";
+    document.getElementById("roomInfo").style.display = "block";
+    document.getElementById("roomCode").textContent = roomId;
+
+    // 이 플레이어가 호스트인지 확인 → 호스트에게만 시작 버튼 노출
+    db.ref(`rooms/${roomId}/hostId`).get().then(snapshot => {
+      isHostPlayer = snapshot.val() === playerId;
+      document.getElementById("startGameBtn").style.display = isHostPlayer ? "block" : "none";
+      document.getElementById("hostHint").style.display = isHostPlayer ? "none" : "block";
+    });
+
+    // 게임 시작 여부 구독 → 호스트가 누르면 전원 화면 전환
+    db.ref(`rooms/${roomId}/status`).on("value", snapshot => {
+      if (snapshot.val() === "started") {
+        document.getElementById("roomInfo").style.display = "none";
+        document.getElementById("gameScreen").style.display = "block";
+      }
+    });
+
+    db.ref(`rooms/${roomId}/players`).on("value", snapshot => {
+      const playersObj = snapshot.val() || {};
+      const entries = Object.entries(playersObj); // [ [playerId, data], ... ]
+
+      // 내 직업 상태 갱신 (다른 기기에서 바뀌었을 가능성 대비)
+      const mine = playersObj[playerId];
+      myClass = mine ? (mine.class || null) : null;
+
+      renderLobbyList(entries);
+      renderClassSelect(entries);
+    });
+
+    db.ref(`rooms/${roomId}/players/${playerId}`).onDisconnect().remove();
+  }
+
+  // ------------------------------------------------------------
+  // 호스트 전용 — 게임 시작 (전원 화면 전환 트리거)
+  // ------------------------------------------------------------
+  function startGame() {
+    if (!isHostPlayer || !currentRoomId) return;
+    db.ref(`rooms/${currentRoomId}/status`).set("started");
+  }
+</script>
+
+</body>
+</html>
