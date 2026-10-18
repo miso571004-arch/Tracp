@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>던전 TRPG - 로비 테스트</title>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+<style>
+  body {
+    font-family: sans-serif;
+    max-width: 480px;
+    margin: 40px auto;
+    padding: 0 16px;
+    background: #1a1a2e;
+    color: #eee;
+  }
+  h1 { font-size: 20px; }
+  input, button {
+    font-size: 16px;
+    padding: 10px;
+    margin: 6px 0;
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 6px;
+    border: 1px solid #444;
+  }
+  button {
+    background: #4a4ae0;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  button:hover { background: #5c5cf0; }
+  #roomInfo {
+    margin-top: 20px;
+    padding: 12px;
+    background: #25253f;
+    border-radius: 8px;
+    display: none;
+  }
+  #roomCode {
+    font-size: 24px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    color: #ffd166;
+  }
+  #playerList {
+    list-style: none;
+    padding: 0;
+  }
+  #playerList li {
+    padding: 8px;
+    margin: 4px 0;
+    background: #333355;
+    border-radius: 6px;
+  }
+  .host-tag {
+    color: #ffd166;
+    font-size: 12px;
+  }
+  #status {
+    font-size: 13px;
+    color: #888;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h1>🗡️ 던전 TRPG — 로비 연결 테스트</h1>
+
+<div id="setup">
+  <input id="nameInput" placeholder="플레이어 이름 입력" maxlength="12">
+  <button onclick="createRoom()">새 방 만들기</button>
+  <hr style="border-color:#444; margin:16px 0;">
+  <input id="joinCodeInput" placeholder="방 코드 입력 (예: AB3X9)" maxlength="5" style="text-transform:uppercase">
+  <button onclick="joinRoom()">방 참가하기</button>
+</div>
+
+<div id="roomInfo">
+  <div>방 코드: <span id="roomCode"></span></div>
+  <h3>참가자 (<span id="playerCount">0</span>명)</h3>
+  <ul id="playerList"></ul>
+</div>
+
+<div id="status">Firebase 연결 대기 중...</div>
+
+<script>
+  // ------------------------------------------------------------
+  // Firebase 초기화
+  // ------------------------------------------------------------
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMEwUt7yViIDEcJ3LVrbBolC1GQyWWwMk",
+    authDomain: "tracp-a5417.firebaseapp.com",
+    databaseURL: "https://tracp-a5417-default-rtdb.firebaseio.com",
+    projectId: "tracp-a5417",
+    storageBucket: "tracp-a5417.firebasestorage.app",
+    messagingSenderId: "655251581595",
+    appId: "1:655251581595:web:f5dcfdfaa875503da7743e",
+    measurementId: "G-H816RT6VZG"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  document.getElementById("status").textContent = "✅ Firebase 연결됨";
+
+  // ------------------------------------------------------------
+  // 상태
+  // ------------------------------------------------------------
+  let currentRoomId = null;
+  let currentPlayerId = null;
+
+  function generateRoomCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 헷갈리는 글자(0,O,1,I) 제외
+    let code = "";
+    for (let i = 0; i < 5; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code;
+  }
+
+  function generatePlayerId() {
+    return "p_" + Math.random().toString(36).substring(2, 10);
+  }
+
+  // ------------------------------------------------------------
+  // 방 만들기 (= 호스트가 됨)
+  // ------------------------------------------------------------
+  function createRoom() {
+    const name = document.getElementById("nameInput").value.trim();
+    if (!name) { alert("이름을 입력해주세요"); return; }
+
+    const roomId = generateRoomCode();
+    const playerId = generatePlayerId();
+
+    db.ref(`rooms/${roomId}`).set({
+      createdAt: Date.now(),
+      hostId: playerId,
+      players: {
+        [playerId]: { name: name, isHost: true, joinedAt: Date.now() }
+      }
+    }).then(() => {
+      enterRoom(roomId, playerId);
+    }).catch(err => {
+      alert("방 생성 실패: " + err.message);
+    });
+  }
+
+  // ------------------------------------------------------------
+  // 방 참가하기
+  // ------------------------------------------------------------
+  function joinRoom() {
+    const name = document.getElementById("nameInput").value.trim();
+    const roomId = document.getElementById("joinCodeInput").value.trim().toUpperCase();
+    if (!name) { alert("이름을 입력해주세요"); return; }
+    if (!roomId) { alert("방 코드를 입력해주세요"); return; }
+
+    db.ref(`rooms/${roomId}`).get().then(snapshot => {
+      if (!snapshot.exists()) {
+        alert("존재하지 않는 방 코드예요");
+        return;
+      }
+
+      const playerId = generatePlayerId();
+      db.ref(`rooms/${roomId}/players/${playerId}`).set({
+        name: name,
+        isHost: false,
+        joinedAt: Date.now()
+      }).then(() => {
+        enterRoom(roomId, playerId);
+      });
+    });
+  }
+
+  // ------------------------------------------------------------
+  // 방 입장 후 — 실시간 플레이어 목록 구독
+  // ------------------------------------------------------------
+  function enterRoom(roomId, playerId) {
+    currentRoomId = roomId;
+    currentPlayerId = playerId;
+
+    document.getElementById("setup").style.display = "none";
+    document.getElementById("roomInfo").style.display = "block";
+    document.getElementById("roomCode").textContent = roomId;
+
+    // 플레이어 목록 실시간 구독 (누가 들어오면 자동으로 콜백 실행됨)
+    db.ref(`rooms/${roomId}/players`).on("value", snapshot => {
+      const players = snapshot.val() || {};
+      const list = document.getElementById("playerList");
+      list.innerHTML = "";
+
+      const entries = Object.values(players);
+      document.getElementById("playerCount").textContent = entries.length;
+
+      entries.forEach(p => {
+        const li = document.createElement("li");
+        li.textContent = p.name;
+        if (p.isHost) {
+          const tag = document.createElement("span");
+          tag.className = "host-tag";
+          tag.textContent = "  👑 호스트";
+          li.appendChild(tag);
+        }
+        list.appendChild(li);
+      });
+    });
+
+    // 접속 끊기면 자동으로 플레이어 목록에서 제거 (Firebase onDisconnect 기능)
+    db.ref(`rooms/${roomId}/players/${playerId}`).onDisconnect().remove();
+  }
+</script>
+
+</body>
+</html>
